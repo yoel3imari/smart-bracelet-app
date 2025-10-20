@@ -10,12 +10,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { Heart, Activity, Thermometer, Droplet, RefreshCw, Bell, User } from 'lucide-react-native';
+import { Heart, Activity, Thermometer, Droplet, RefreshCw, Bell, User, Bike } from 'lucide-react-native';
 import { useHealthData } from '@/contexts/HealthDataContext';
 import colors from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 48) / 2;
+const CARD_WIDTH = (width - 60) / 2;
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -131,7 +131,7 @@ export default function HomeScreen() {
           </Animated.View>
         </View>
 
-        <View style={styles.statsGrid}>
+        <View className='grid grids-2 ' style={styles.statsGrid}>
           <View style={styles.statCard}>
             <View style={[styles.statIcon, { backgroundColor: colors.secondary }]}>
               <Activity size={24} color={colors.primary} />
@@ -161,9 +161,13 @@ export default function HomeScreen() {
             <Text style={styles.statUnit}>%</Text>
           </View>
 
-          <View style={[styles.statCard, styles.placeholderCard]}>
-            <Text style={styles.placeholderText}>+</Text>
-            <Text style={styles.placeholderLabel}>Add Metric</Text>
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, { backgroundColor: '#FFF4E6' }]}>
+              <Bike size={24} color={colors.warning} />
+            </View>
+            <Text style={styles.statLabel}>Acceleration</Text>
+            <Text style={styles.statValue}>{currentData.temperature.toFixed(1)}</Text>
+            <Text style={styles.statUnit}>Km</Text>
           </View>
         </View>
 

@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { HealthDataProvider } from "@/contexts/HealthDataContext";
+import './global.css';
 
 SplashScreen.preventAutoHideAsync();
 

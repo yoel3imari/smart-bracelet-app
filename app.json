@@ -25,7 +25,8 @@
       "package": "app.rork.zekjfn-project"
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
       [
@@ -33,7 +34,9 @@
         {
           "origin": "https://rork.com/"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
