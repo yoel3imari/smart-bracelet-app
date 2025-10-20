@@ -171,7 +171,7 @@ The following dependencies were added:
 ```json
 {
   "axios": "^1.6.0",
-  "expo-bluetooth": "~5.0.7",
+  "react-native-ble-plx": "^3.1.1",
   "expo-secure-store": "~14.0.9"
 }
 ```

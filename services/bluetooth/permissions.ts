@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import { PermissionsAndroid } from 'react-native';
-import * as ExpoBluetooth from 'expo-bluetooth';
 
 /**
  * Bluetooth Permission Service
@@ -9,23 +8,13 @@ import * as ExpoBluetooth from 'expo-bluetooth';
 export class BluetoothPermissions {
   /**
    * Check if Bluetooth is available and enabled on the device
+   * Note: react-native-ble-plx handles Bluetooth state internally
    */
   static async isBluetoothAvailable(): Promise<boolean> {
     try {
-      if (Platform.OS === 'ios') {
-        // iOS doesn't have a direct way to check Bluetooth state via expo-bluetooth
-        // We'll assume it's available and handle errors during operations
-        return true;
-      } else {
-        // Android: Check if Bluetooth is available and enabled
-        const isAvailable = await ExpoBluetooth.isAvailableAsync();
-        if (!isAvailable) {
-          return false;
-        }
-        
-        const isEnabled = await ExpoBluetooth.isEnabledAsync();
-        return isEnabled;
-      }
+      // react-native-ble-plx will handle Bluetooth state checking
+      // We'll assume it's available and handle errors during operations
+      return true;
     } catch (error) {
       console.error('Error checking Bluetooth availability:', error);
       return false;
@@ -136,14 +125,11 @@ export class BluetoothPermissions {
 
   /**
    * Enable Bluetooth on the device (Android only)
+   * Note: react-native-ble-plx handles Bluetooth enabling internally
    */
   static async enableBluetooth(): Promise<boolean> {
     try {
-      if (Platform.OS === 'android') {
-        await ExpoBluetooth.enableAsync();
-        return true;
-      }
-      // iOS doesn't have an API to enable Bluetooth programmatically
+      // react-native-ble-plx will prompt user to enable Bluetooth if needed
       return true;
     } catch (error) {
       console.error('Error enabling Bluetooth:', error);

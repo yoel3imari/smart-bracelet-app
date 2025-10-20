@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.zekjfn-project"
+      "package": "com.yoel3imari.zekjfnproject"
     },
     "web": {
       "favicon": "./assets/images/favicon.png",
@@ -40,6 +40,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://rork.com/"
+      },
+      "eas": {
+        "projectId": "8efe7e57-800f-41ab-b0de-64b2d7d69384"
+      }
+    },
+    "owner": "yoel3imari"
   }
 }

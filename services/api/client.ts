@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
@@ -81,7 +81,7 @@ class ApiClient {
   private setupInterceptors() {
     // Request interceptor
     this.client.interceptors.request.use(
-      async (config: AxiosRequestConfig) => {
+      async (config: InternalAxiosRequestConfig) => {
         const apiConfig = config as ApiRequestConfig;
         
         // Add auth token if required

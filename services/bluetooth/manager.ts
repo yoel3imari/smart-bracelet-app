@@ -1,6 +1,7 @@
+
 import { Platform } from 'react-native';
-import { BleManager, Device, Characteristic, Service, State } from 'react-native-ble-plx';
 import { PermissionsAndroid } from 'react-native';
+import { BleManager, Device, Characteristic, Service, State } from 'react-native-ble-plx';
 
 // Types for Bluetooth devices and data
 export interface BluetoothDevice {
@@ -8,7 +9,7 @@ export interface BluetoothDevice {
   name: string;
   localName?: string;
   rssi?: number;
-  manufacturerData?: string;
+  manufacturerData?: Record<string, any>;
   serviceUUIDs?: string[];
   isConnectable?: boolean;
 }
@@ -36,13 +37,13 @@ export interface BluetoothCharacteristic {
     notify: boolean;
     indicate: boolean;
   };
-  value?: string | null;
+  value?: ArrayBuffer;
   descriptors?: BluetoothDescriptor[];
 }
 
 export interface BluetoothDescriptor {
   uuid: string;
-  value?: string | null;
+  value?: ArrayBuffer;
 }
 
 export interface HealthDataPacket {
@@ -102,8 +103,8 @@ export interface BluetoothEvents {
 }
 
 /**
- * Main Bluetooth Manager Class using react-native-ble-plx
- * Handles all Bluetooth operations including scanning, connecting, and data transfer
+ * Main Bluetooth Manager Class
+ * Handles all Bluetooth operations using react-native-ble-plx
  */
 export class BluetoothManager {
   private static instance: BluetoothManager;
@@ -116,10 +117,11 @@ export class BluetoothManager {
   private maxReconnectAttempts = 3;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private scanSubscription: any = null;
+  private notificationSubscriptions: Map<string, any> = new Map();
 
   private constructor() {
     this.bleManager = new BleManager();
-    this.setupEventListeners();
+    this.setupBleManagerListeners();
   }
 
   static getInstance(): BluetoothManager {
@@ -129,12 +131,12 @@ export class BluetoothManager {
     return BluetoothManager.instance;
   }
 
-  private setupEventListeners() {
+  private setupBleManagerListeners(): void {
     // Monitor Bluetooth state
     this.bleManager.onStateChange((state) => {
       console.log('Bluetooth state changed:', state);
       if (state === State.PoweredOff) {
-        this.setConnectionState('disconnected');
+        this.setConnectionState('error');
         this.emit('onError', new Error('Bluetooth is turned off'));
       }
     }, true);
@@ -163,6 +165,55 @@ export class BluetoothManager {
     }
   }
 
+  // Permission management
+  async requestPermissions(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android') {
+        // Request Bluetooth permissions for Android
+        const permissions = [
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        ];
+
+        const granted = await PermissionsAndroid.requestMultiple(permissions);
+        
+        return Object.values(granted).every(
+          permission => permission === PermissionsAndroid.RESULTS.GRANTED
+        );
+      } else {
+        // iOS permissions are handled by the system
+        return true;
+      }
+    } catch (error) {
+      console.error('Error requesting Bluetooth permissions:', error);
+      this.emit('onError', error as Error);
+      return false;
+    }
+  }
+
+  async checkPermissions(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android') {
+        const permissions = [
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        ];
+
+        const results = await Promise.all(
+          permissions.map(permission => PermissionsAndroid.check(permission))
+        );
+
+        return results.every(result => result);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error checking Bluetooth permissions:', error);
+      return false;
+    }
+  }
+
   // Device scanning
   async startScanning(timeout: number = 30000): Promise<void> {
     try {
@@ -188,7 +239,7 @@ export class BluetoothManager {
         null,
         (error, device) => {
           if (error) {
-            console.error('Scan error:', error);
+            console.error('Error during device scan:', error);
             this.setConnectionState('error');
             this.emit('onError', error);
             return;
@@ -200,7 +251,7 @@ export class BluetoothManager {
               name: device.name || 'Unknown Device',
               localName: device.localName || undefined,
               rssi: device.rssi || undefined,
-              manufacturerData: device.manufacturerData || undefined,
+              manufacturerData: device.manufacturerData ? JSON.parse(device.manufacturerData) : undefined,
               serviceUUIDs: device.serviceUUIDs || undefined,
               isConnectable: device.isConnectable || undefined,
             };
@@ -251,28 +302,48 @@ export class BluetoothManager {
       
       // Discover services and characteristics
       await device.discoverAllServicesAndCharacteristics();
-      
+
+      // Get services and characteristics
       const services = await device.services();
-      const characteristics = await device.characteristicsForService(HEALTH_SERVICE_UUIDS.HEART_RATE);
+      
+      // Get characteristics for each service
+      const allCharacteristics: Characteristic[] = [];
+      for (const service of services) {
+        const serviceCharacteristics = await device.characteristicsForService(service.uuid);
+        allCharacteristics.push(...serviceCharacteristics);
+      }
 
       const connectedDevice: ConnectedDevice = {
         id: device.id,
         name: device.name || 'Health Monitor',
         connected: true,
-        services: services.map(service => ({
-          uuid: service.uuid,
-          isPrimary: service.isPrimary,
-          characteristics: [], // Would need to map characteristics per service
-        })),
-        characteristics: characteristics.map(char => ({
+        services: await Promise.all(
+          services.map(async (service: Service) => ({
+            uuid: service.uuid,
+            isPrimary: service.isPrimary,
+            characteristics: allCharacteristics
+              .filter((char: Characteristic) => char.serviceUUID === service.uuid)
+              .map((char: Characteristic) => ({
+                uuid: char.uuid,
+                properties: {
+                  read: char.isReadable,
+                  write: char.isWritableWithResponse || char.isWritableWithoutResponse,
+                  notify: char.isNotifiable,
+                  indicate: char.isIndicatable,
+                },
+                value: char.value ? this.base64ToArrayBuffer(char.value) : undefined,
+              })),
+          }))
+        ),
+        characteristics: allCharacteristics.map((char: Characteristic) => ({
           uuid: char.uuid,
           properties: {
-            read: char.isReadable || false,
-            write: char.isWritableWithResponse || char.isWritableWithoutResponse || false,
-            notify: char.isNotifiable || false,
-            indicate: char.isIndicatable || false,
+            read: char.isReadable,
+            write: char.isWritableWithResponse || char.isWritableWithoutResponse,
+            notify: char.isNotifiable,
+            indicate: char.isIndicatable,
           },
-          value: char.value || undefined,
+          value: char.value ? this.base64ToArrayBuffer(char.value) : undefined,
         })),
         lastSeen: new Date(),
       };
@@ -282,7 +353,7 @@ export class BluetoothManager {
       this.reconnectAttempts = 0;
 
       // Set up notifications for health data
-      await this.setupHealthDataNotifications(deviceId);
+      await this.setupHealthDataNotifications(device);
 
       this.emit('onDeviceConnected', connectedDevice);
       return connectedDevice;
@@ -303,6 +374,12 @@ export class BluetoothManager {
 
       this.setConnectionState('disconnecting');
 
+      // Remove all notification subscriptions
+      this.notificationSubscriptions.forEach((subscription, key) => {
+        subscription.remove();
+      });
+      this.notificationSubscriptions.clear();
+
       const deviceId = this.connectedDevice.id;
       await this.bleManager.cancelDeviceConnection(deviceId);
       
@@ -320,25 +397,24 @@ export class BluetoothManager {
   }
 
   // Data handling
-  private async setupHealthDataNotifications(deviceId: string): Promise<void> {
+  private async setupHealthDataNotifications(device: Device): Promise<void> {
     try {
-      // Monitor characteristic for heart rate
-      const device = await this.bleManager.devices([deviceId]);
-      
-      device[0].monitorCharacteristicForService(
+      // Set up notifications for heart rate
+      const heartRateSubscription = device.monitorCharacteristicForService(
         HEALTH_SERVICE_UUIDS.HEART_RATE,
         CHARACTERISTIC_UUIDS.HEART_RATE_MEASUREMENT,
         (error, characteristic) => {
           if (error) {
-            console.error('Error monitoring characteristic:', error);
+            console.error('Error monitoring heart rate:', error);
             return;
           }
-          
-          if (characteristic?.value) {
+          if (characteristic) {
             this.handleCharacteristicValue(characteristic);
           }
         }
       );
+
+      this.notificationSubscriptions.set('heart_rate', heartRateSubscription);
 
     } catch (error) {
       console.error('Error setting up health data notifications:', error);
@@ -351,25 +427,26 @@ export class BluetoothManager {
       const value = characteristic.value;
       if (!value) return;
 
+      const arrayBuffer = this.base64ToArrayBuffer(value);
       let healthData: Partial<HealthDataPacket> = {};
 
       switch (characteristic.uuid) {
         case CHARACTERISTIC_UUIDS.HEART_RATE_MEASUREMENT:
-          healthData.heartRate = this.parseHeartRate(value);
+          healthData.heartRate = this.parseHeartRate(arrayBuffer);
           break;
         case CHARACTERISTIC_UUIDS.BLOOD_PRESSURE_MEASUREMENT:
-          const bp = this.parseBloodPressure(value);
+          const bp = this.parseBloodPressure(arrayBuffer);
           healthData.bloodPressureSystolic = bp.systolic;
           healthData.bloodPressureDiastolic = bp.diastolic;
           break;
         case CHARACTERISTIC_UUIDS.TEMPERATURE_MEASUREMENT:
-          healthData.temperature = this.parseTemperature(value);
+          healthData.temperature = this.parseTemperature(arrayBuffer);
           break;
         case CHARACTERISTIC_UUIDS.OXYGEN_SATURATION:
-          healthData.oxygenLevel = this.parseOxygenSaturation(value);
+          healthData.oxygenLevel = this.parseOxygenSaturation(arrayBuffer);
           break;
         case CHARACTERISTIC_UUIDS.BATTERY_LEVEL:
-          healthData.batteryLevel = this.parseBatteryLevel(value);
+          healthData.batteryLevel = this.parseBatteryLevel(arrayBuffer);
           break;
       }
 
@@ -395,91 +472,53 @@ export class BluetoothManager {
     }
   }
 
+  // Utility functions
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
   // Data parsing utilities
-  private parseHeartRate(data: string): number {
+  private parseHeartRate(data: ArrayBuffer): number {
     // Heart rate measurement format according to Bluetooth spec
-    const buffer = Buffer.from(data, 'base64');
-    const flags = buffer.readUInt8(0);
+    const view = new DataView(data);
+    const flags = view.getUint8(0);
     const is16Bit = (flags & 0x01) !== 0;
     
     if (is16Bit) {
-      return buffer.readUInt16LE(1);
+      return view.getUint16(1, true);
     } else {
-      return buffer.readUInt8(1);
+      return view.getUint8(1);
     }
   }
 
-  private parseBloodPressure(data: string): { systolic: number; diastolic: number } {
-    const buffer = Buffer.from(data, 'base64');
-    const flags = buffer.readUInt8(0);
-    const systolic = buffer.readUInt16LE(1) / 10; // Convert to mmHg
-    const diastolic = buffer.readUInt16LE(3) / 10; // Convert to mmHg
+  private parseBloodPressure(data: ArrayBuffer): { systolic: number; diastolic: number } {
+    const view = new DataView(data);
+    const flags = view.getUint8(0);
+    const systolic = view.getUint16(1, true) / 10; // Convert to mmHg
+    const diastolic = view.getUint16(3, true) / 10; // Convert to mmHg
     
     return { systolic, diastolic };
   }
 
-  private parseTemperature(data: string): number {
-    const buffer = Buffer.from(data, 'base64');
-    const temp = buffer.readInt32LE(0) / 100; // Convert to Celsius
+  private parseTemperature(data: ArrayBuffer): number {
+    const view = new DataView(data);
+    const temp = view.getInt32(0, true) / 100; // Convert to Celsius
     return temp;
   }
 
-  private parseOxygenSaturation(data: string): number {
-    const buffer = Buffer.from(data, 'base64');
-    return buffer.readUInt8(0); // Percentage
+  private parseOxygenSaturation(data: ArrayBuffer): number {
+    const view = new DataView(data);
+    return view.getUint8(0); // Percentage
   }
 
-  private parseBatteryLevel(data: string): number {
-    const buffer = Buffer.from(data, 'base64');
-    return buffer.readUInt8(0); // Percentage
-  }
-
-  // Permission management (same as before)
-  async requestPermissions(): Promise<boolean> {
-    try {
-      if (Platform.OS === 'android') {
-        const permissions = [
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        ];
-
-        const granted = await PermissionsAndroid.requestMultiple(permissions);
-        
-        return Object.values(granted).every(
-          permission => permission === PermissionsAndroid.RESULTS.GRANTED
-        );
-      } else {
-        // iOS permissions are handled by the system
-        return true;
-      }
-    } catch (error) {
-      console.error('Error requesting Bluetooth permissions:', error);
-      this.emit('onError', error as Error);
-      return false;
-    }
-  }
-
-  async checkPermissions(): Promise<boolean> {
-    try {
-      if (Platform.OS === 'android') {
-        const permissions = [
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        ];
-
-        const results = await Promise.all(
-          permissions.map(permission => PermissionsAndroid.check(permission))
-        );
-
-        return results.every(result => result);
-      }
-      return true;
-    } catch (error) {
-      console.error('Error checking Bluetooth permissions:', error);
-      return false;
-    }
+  private parseBatteryLevel(data: ArrayBuffer): number {
+    const view = new DataView(data);
+    return view.getUint8(0); // Percentage
   }
 
   // Reconnection logic
@@ -532,7 +571,6 @@ export class BluetoothManager {
 
       // Remove all listeners
       this.events = {};
-      this.bleManager.destroy();
     } catch (error) {
       console.error('Error during Bluetooth cleanup:', error);
     }
