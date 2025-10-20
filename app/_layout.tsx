@@ -4,11 +4,22 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { HealthDataProvider } from "@/contexts/HealthDataContext";
+import ErrorBoundary from "../../src/components/error-boundary/ErrorBoundary";
 import './global.css';
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 2,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 function RootLayoutNav() {
   return (
@@ -24,12 +35,14 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <HealthDataProvider>
-        <GestureHandlerRootView>
-          <RootLayoutNav />
-        </GestureHandlerRootView>
-      </HealthDataProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <HealthDataProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <RootLayoutNav />
+          </GestureHandlerRootView>
+        </HealthDataProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
