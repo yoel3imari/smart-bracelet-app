@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Zekjfn Project",
-    "slug": "zekjfn-project",
+    "name": "Smart Braclet",
+    "slug": "smart-bracelet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
