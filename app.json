@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Smart Braclet",
-    "slug": "smart-bracelet",
+    "slug": "zekjfn-project",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -22,7 +22,12 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.yoel3imari.zekjfnproject"
+      "package": "com.yoel3imari.zekjfnproject",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png",
@@ -33,6 +38,17 @@
         "expo-router",
         {
           "origin": "https://rork.com/"
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to bluetooth devices"
         }
       ],
       "expo-font",

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,14 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { Heart, Activity, Thermometer, Droplet, RefreshCw, Bell, User, Bike } from 'lucide-react-native';
+import { Heart, Activity, Thermometer, Droplet, RefreshCw, Bell, User, Bike, Bluetooth } from 'lucide-react-native';
 import { useHealthData } from '@/contexts/HealthDataContext';
+import DeviceSelectionModal from '@/components/bluetooth/DeviceSelectionModal';
+import { BluetoothDevice } from '@/services/bluetooth/manager';
 import colors from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
@@ -19,9 +22,18 @@ const CARD_WIDTH = (width - 60) / 2;
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { isConnected, hasAlerts, currentData, refreshData } = useHealthData();
+  const {
+    isConnected,
+    hasAlerts,
+    currentData,
+    refreshData,
+    connectToDevice,
+    disconnectFromDevice,
+    connectedDevice
+  } = useHealthData();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const heartBeatAnim = useRef(new Animated.Value(0)).current;
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -89,7 +101,34 @@ export default function HomeScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <View style={styles.headerLeft}>
             <View style={[styles.statusDot, isConnected ? styles.connected : styles.disconnected]} />
-            <Text style={styles.statusText}>{isConnected ? 'Connected' : 'Disconnected'}</Text>
+            <TouchableOpacity
+              style={styles.statusContainer}
+              onPress={() => {
+                if (isConnected) {
+                  Alert.alert(
+                    'Disconnect Device',
+                    'Do you want to disconnect from the current device?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Disconnect',
+                        style: 'destructive',
+                        onPress: disconnectFromDevice
+                      },
+                    ]
+                  );
+                } else {
+                  setShowDeviceModal(true);
+                }
+              }}
+            >
+              <Text style={styles.statusText}>
+                {isConnected ? 'Connected' : 'Tap to Connect'}
+              </Text>
+              {!isConnected && (
+                <Bluetooth size={16} color={colors.primary} style={styles.bluetoothIcon} />
+              )}
+            </TouchableOpacity>
           </View>
           <View style={styles.headerRight}>
             {hasAlerts && (
@@ -175,8 +214,43 @@ export default function HomeScreen() {
           <Text style={styles.lastUpdatedText}>
             Last updated: {currentData.lastUpdated.toLocaleTimeString()}
           </Text>
+          {connectedDevice && (
+            <Text style={styles.deviceInfo}>
+              Connected to: {connectedDevice}
+            </Text>
+          )}
         </View>
+
+        {!isConnected && (
+          <View style={styles.connectPrompt}>
+            <Bluetooth size={48} color={colors.textMuted} />
+            <Text style={styles.connectPromptTitle}>No Device Connected</Text>
+            <Text style={styles.connectPromptText}>
+              Connect your health monitoring device to see real-time data
+            </Text>
+            <TouchableOpacity
+              style={styles.connectButton}
+              onPress={() => setShowDeviceModal(true)}
+            >
+              <Bluetooth size={20} color={colors.white} />
+              <Text style={styles.connectButtonText}>Connect Device</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
+
+      <DeviceSelectionModal
+        visible={showDeviceModal}
+        onClose={() => setShowDeviceModal(false)}
+        onDeviceSelected={async (device: BluetoothDevice) => {
+          try {
+            await connectToDevice(device.id);
+            setShowDeviceModal(false);
+          } catch (error) {
+            Alert.alert('Connection Failed', 'Failed to connect to the selected device');
+          }
+        }}
+      />
     </>
   );
 }
@@ -201,6 +275,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  bluetoothIcon: {
+    marginLeft: 4,
   },
   statusDot: {
     width: 10,
@@ -368,9 +450,56 @@ const styles = StyleSheet.create({
   lastUpdated: {
     alignItems: 'center',
     marginTop: 24,
+    gap: 4,
   },
   lastUpdatedText: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  deviceInfo: {
+    fontSize: 11,
+    color: colors.textLight,
+    fontStyle: 'italic',
+  },
+  connectPrompt: {
+    alignItems: 'center',
+    padding: 32,
+    marginHorizontal: 20,
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    marginTop: 24,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  connectPromptTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  connectPromptText: {
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  connectButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
