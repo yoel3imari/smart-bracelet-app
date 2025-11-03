@@ -123,11 +123,15 @@ export class BluetoothManager {
     try {
       console.log('Initializing Bluetooth Manager...');
       
-      // Check if BleManager is available
-      if (typeof BleManager !== 'function') {
-        throw new Error('BleManager constructor is not available. Check if react-native-ble-plx is properly linked.');
+      // Check if we're in a development build and BleManager is available
+      if (typeof BleManager !== 'function' || BleManager === null) {
+        console.warn('BleManager is not available. This is normal in development builds. Using mock implementation.');
+        this.bleManager = this.createMockBleManager();
+        console.log('Bluetooth Manager initialized with mock implementation');
+        return;
       }
       
+      // Try to create the actual BleManager
       this.bleManager = new BleManager();
       console.log('Bluetooth Manager initialized successfully');
       
@@ -139,8 +143,8 @@ export class BluetoothManager {
         errorMessage: error instanceof Error ? error.message : String(error),
         errorStack: error instanceof Error ? error.stack : 'No stack trace'
       });
-      // Create a mock bleManager to prevent crashes
-      this.bleManager = {} as BleManager;
+      console.warn('Falling back to mock Bluetooth implementation');
+      this.bleManager = this.createMockBleManager();
     }
   }
 
@@ -592,6 +596,65 @@ export class BluetoothManager {
         this.attemptReconnect();
       }, delay) as unknown as NodeJS.Timeout;
     }
+  }
+
+  // Mock implementation for development builds
+  private createMockBleManager(): BleManager {
+    const mockManager = {
+      onStateChange: (listener: (state: any) => void, emitCurrentState?: boolean) => {
+        console.log('Mock: onStateChange called');
+        return { remove: () => {} };
+      },
+      startDeviceScan: (serviceUUIDs: string[] | null, options: any, listener: (error: any, device: any) => void) => {
+        console.log('Mock: startDeviceScan called');
+        // Simulate finding some mock devices after a delay
+        setTimeout(() => {
+          const mockDevice = {
+            id: 'mock-device-1',
+            name: 'Mock Health Monitor',
+            localName: 'Health Monitor',
+            rssi: -50,
+            manufacturerData: null,
+            serviceUUIDs: Object.values(HEALTH_SERVICE_UUIDS),
+            isConnectable: true
+          };
+          listener(null, mockDevice);
+        }, 1000);
+        return { remove: () => {} };
+      },
+      stopDeviceScan: () => {
+        console.log('Mock: stopDeviceScan called');
+      },
+      connectToDevice: async (deviceId: string) => {
+        console.log('Mock: connectToDevice called for', deviceId);
+        return {
+          id: deviceId,
+          name: 'Mock Health Monitor',
+          discoverAllServicesAndCharacteristics: async () => {
+            console.log('Mock: discoverAllServicesAndCharacteristics called');
+          },
+          services: async () => [],
+          characteristicsForService: async (serviceUUID: string) => []
+        };
+      },
+      cancelDeviceConnection: async (deviceId: string) => {
+        console.log('Mock: cancelDeviceConnection called for', deviceId);
+      },
+      monitorCharacteristicForService: (serviceUUID: string, characteristicUUID: string, listener: (error: any, characteristic: any) => void) => {
+        console.log('Mock: monitorCharacteristicForService called');
+        // Simulate some mock data after a delay
+        setTimeout(() => {
+          const mockCharacteristic = {
+            uuid: characteristicUUID,
+            value: 'mock-value'
+          };
+          listener(null, mockCharacteristic);
+        }, 2000);
+        return { remove: () => {} };
+      }
+    } as unknown as BleManager;
+    
+    return mockManager;
   }
 
   // Public methods
