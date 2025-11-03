@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Smart Braclet",
-    "slug": "zekjfn-project",
+    "slug": "smart-bracelet",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.rork.zekjfn-project"
+      "bundleIdentifier": "app.rork.zekjfn-project",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -62,7 +65,7 @@
         "origin": "https://rork.com/"
       },
       "eas": {
-        "projectId": "8efe7e57-800f-41ab-b0de-64b2d7d69384"
+        "projectId": "b8dbf4ce-4d16-40ee-a1dd-a4e50dfdb7ec"
       }
     },
     "owner": "yoel3imari"
