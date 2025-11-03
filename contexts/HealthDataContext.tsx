@@ -1,5 +1,6 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { HealthDataPacket, bluetoothManager } from '@/services/bluetooth/manager';
 
 export interface HealthData {
   heartRate: number;
@@ -29,14 +30,14 @@ export interface UserProfile {
 }
 
 export const [HealthDataProvider, useHealthData] = createContextHook(() => {
-  const [isConnected, setIsConnected] = useState<boolean>(true);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
   const [hasAlerts, setHasAlerts] = useState<boolean>(false);
   const [currentData, setCurrentData] = useState<HealthData>({
-    heartRate: 72,
-    bloodPressureSystolic: 120,
-    bloodPressureDiastolic: 80,
-    temperature: 36.6,
-    oxygenLevel: 98,
+    heartRate: 0,
+    bloodPressureSystolic: 0,
+    bloodPressureDiastolic: 0,
+    temperature: 0,
+    oxygenLevel: 0,
     lastUpdated: new Date(),
   });
 
@@ -52,48 +53,101 @@ export const [HealthDataProvider, useHealthData] = createContextHook(() => {
     medications: ['Lisinopril 10mg', 'Albuterol inhaler'],
   });
 
-  useEffect(() => {
-    const generateHistoricalData = () => {
-      const data: HistoricalData[] = [];
-      const now = new Date();
-      for (let i = 23; i >= 0; i--) {
-        const timestamp = new Date(now.getTime() - i * 60 * 60 * 1000);
-        data.push({
-          timestamp,
-          heartRate: 65 + Math.random() * 20,
-          oxygenLevel: 95 + Math.random() * 4,
-          temperature: 36.2 + Math.random() * 1.2,
-        });
-      }
-      setHistoricalData(data);
-    };
+  const [connectedDevice, setConnectedDevice] = useState<string | null>(null);
 
-    generateHistoricalData();
+  // Initialize Bluetooth manager listeners
+  useEffect(() => {
+    // Listen for connection state changes
+    bluetoothManager.on('onConnectionStateChanged', (state) => {
+      setIsConnected(state === 'connected');
+    });
+
+    // Listen for health data updates
+    bluetoothManager.on('onHealthDataReceived', (data: HealthDataPacket) => {
+      setCurrentData({
+        heartRate: data.heartRate,
+        bloodPressureSystolic: data.bloodPressureSystolic,
+        bloodPressureDiastolic: data.bloodPressureDiastolic,
+        temperature: data.temperature,
+        oxygenLevel: data.oxygenLevel,
+        lastUpdated: data.timestamp,
+      });
+
+      // Add to historical data
+      setHistoricalData(prev => {
+        const newData = [...prev];
+        newData.push({
+          timestamp: data.timestamp,
+          heartRate: data.heartRate,
+          oxygenLevel: data.oxygenLevel,
+          temperature: data.temperature,
+        });
+        
+        // Keep only last 24 hours of data
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        return newData.filter(item => item.timestamp > twentyFourHoursAgo);
+      });
+
+      // Check for alerts based on health data
+      checkForAlerts(data);
+    });
+
+    // Listen for device connection
+    bluetoothManager.on('onDeviceConnected', (device) => {
+      setConnectedDevice(device.id);
+      setIsConnected(true);
+    });
+
+    // Listen for device disconnection
+    bluetoothManager.on('onDeviceDisconnected', (deviceId) => {
+      setConnectedDevice(null);
+      setIsConnected(false);
+      setHasAlerts(false);
+    });
+
+    // Check initial connection state
+    setIsConnected(bluetoothManager.isConnected());
+
+    return () => {
+      // Clean up listeners
+      bluetoothManager.off('onConnectionStateChanged');
+      bluetoothManager.off('onHealthDataReceived');
+      bluetoothManager.off('onDeviceConnected');
+      bluetoothManager.off('onDeviceDisconnected');
+    };
   }, []);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentData((prev) => ({
-        heartRate: Math.max(60, Math.min(100, prev.heartRate + (Math.random() - 0.5) * 4)),
-        bloodPressureSystolic: Math.max(110, Math.min(140, prev.bloodPressureSystolic + (Math.random() - 0.5) * 3)),
-        bloodPressureDiastolic: Math.max(70, Math.min(90, prev.bloodPressureDiastolic + (Math.random() - 0.5) * 2)),
-        temperature: Math.max(36.0, Math.min(37.5, prev.temperature + (Math.random() - 0.5) * 0.2)),
-        oxygenLevel: Math.max(95, Math.min(100, prev.oxygenLevel + (Math.random() - 0.5) * 1)),
-        lastUpdated: new Date(),
-      }));
+  const checkForAlerts = useCallback((data: HealthDataPacket) => {
+    const alerts = [];
+    
+    if (data.heartRate < 60 || data.heartRate > 100) {
+      alerts.push('Abnormal heart rate detected');
+    }
+    
+    if (data.bloodPressureSystolic > 140 || data.bloodPressureDiastolic > 90) {
+      alerts.push('High blood pressure detected');
+    }
+    
+    if (data.temperature < 36.0 || data.temperature > 37.5) {
+      alerts.push('Abnormal body temperature');
+    }
+    
+    if (data.oxygenLevel < 95) {
+      alerts.push('Low oxygen saturation');
+    }
 
-      if (Math.random() > 0.95) {
-        setHasAlerts(true);
-        setTimeout(() => setHasAlerts(false), 5000);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
+    if (alerts.length > 0) {
+      setHasAlerts(true);
+      // Auto-clear alerts after 10 seconds
+      setTimeout(() => setHasAlerts(false), 10000);
+    }
   }, []);
 
   const refreshData = useCallback(() => {
     console.log('Refreshing health data...');
-    setCurrentData((prev) => ({
+    // In a real implementation, this would trigger a manual read from the device
+    // For now, we'll just update the timestamp
+    setCurrentData(prev => ({
       ...prev,
       lastUpdated: new Date(),
     }));
@@ -103,8 +157,36 @@ export const [HealthDataProvider, useHealthData] = createContextHook(() => {
     setUserProfile((prev) => ({ ...prev, ...updates }));
   }, []);
 
-  const toggleConnection = useCallback(() => {
-    setIsConnected((prev) => !prev);
+  const toggleConnection = useCallback(async () => {
+    if (isConnected) {
+      // Disconnect from current device
+      try {
+        await bluetoothManager.disconnectFromDevice();
+      } catch (error) {
+        console.error('Error disconnecting device:', error);
+      }
+    } else {
+      // Connection is handled through the device selection modal
+      console.log('Use device selection modal to connect');
+    }
+  }, [isConnected]);
+
+  const connectToDevice = useCallback(async (deviceId: string) => {
+    try {
+      await bluetoothManager.connectToDevice(deviceId);
+    } catch (error) {
+      console.error('Error connecting to device:', error);
+      throw error;
+    }
+  }, []);
+
+  const disconnectFromDevice = useCallback(async () => {
+    try {
+      await bluetoothManager.disconnectFromDevice();
+    } catch (error) {
+      console.error('Error disconnecting from device:', error);
+      throw error;
+    }
   }, []);
 
   return useMemo(
@@ -114,10 +196,25 @@ export const [HealthDataProvider, useHealthData] = createContextHook(() => {
       currentData,
       historicalData,
       userProfile,
+      connectedDevice,
       refreshData,
       updateUserProfile,
       toggleConnection,
+      connectToDevice,
+      disconnectFromDevice,
     }),
-    [isConnected, hasAlerts, currentData, historicalData, userProfile, refreshData, updateUserProfile, toggleConnection]
+    [
+      isConnected,
+      hasAlerts,
+      currentData,
+      historicalData,
+      userProfile,
+      connectedDevice,
+      refreshData,
+      updateUserProfile,
+      toggleConnection,
+      connectToDevice,
+      disconnectFromDevice,
+    ]
   );
 });
