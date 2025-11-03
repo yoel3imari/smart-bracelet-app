@@ -57,6 +57,16 @@ export const [HealthDataProvider, useHealthData] = createContextHook(() => {
 
   // Initialize Bluetooth manager listeners
   useEffect(() => {
+    // Check if Bluetooth manager is properly initialized
+    const initStatus = bluetoothManager.getInitializationStatus();
+    console.log('Bluetooth Manager Initialization Status:', initStatus);
+
+    if (!initStatus.initialized) {
+      console.warn('Bluetooth manager not properly initialized:', initStatus.error);
+      // Don't set up listeners if Bluetooth manager is not initialized
+      return;
+    }
+
     // Listen for connection state changes
     bluetoothManager.on('onConnectionStateChanged', (state) => {
       setIsConnected(state === 'connected');

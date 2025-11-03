@@ -120,8 +120,28 @@ export class BluetoothManager {
   private notificationSubscriptions: Map<string, any> = new Map();
 
   private constructor() {
-    this.bleManager = new BleManager();
-    this.setupBleManagerListeners();
+    try {
+      console.log('Initializing Bluetooth Manager...');
+      
+      // Check if BleManager is available
+      if (typeof BleManager !== 'function') {
+        throw new Error('BleManager constructor is not available. Check if react-native-ble-plx is properly linked.');
+      }
+      
+      this.bleManager = new BleManager();
+      console.log('Bluetooth Manager initialized successfully');
+      
+      this.setupBleManagerListeners();
+    } catch (error) {
+      console.error('Failed to initialize Bluetooth Manager:', error);
+      console.error('Error details:', {
+        BleManagerType: typeof BleManager,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+      // Create a mock bleManager to prevent crashes
+      this.bleManager = {} as BleManager;
+    }
   }
 
   static getInstance(): BluetoothManager {
@@ -132,14 +152,24 @@ export class BluetoothManager {
   }
 
   private setupBleManagerListeners(): void {
-    // Monitor Bluetooth state
-    this.bleManager.onStateChange((state) => {
-      console.log('Bluetooth state changed:', state);
-      if (state === State.PoweredOff) {
-        this.setConnectionState('error');
-        this.emit('onError', new Error('Bluetooth is turned off'));
+    try {
+      // Check if bleManager has the required method
+      if (typeof this.bleManager.onStateChange !== 'function') {
+        console.warn('Bluetooth manager not properly initialized - native module may be missing');
+        return;
       }
-    }, true);
+      
+      // Monitor Bluetooth state
+      this.bleManager.onStateChange((state) => {
+        console.log('Bluetooth state changed:', state);
+        if (state === State.PoweredOff) {
+          this.setConnectionState('error');
+          this.emit('onError', new Error('Bluetooth is turned off'));
+        }
+      }, true);
+    } catch (error) {
+      console.error('Error setting up Bluetooth listeners:', error);
+    }
   }
 
   // Event management
@@ -217,6 +247,11 @@ export class BluetoothManager {
   // Device scanning
   async startScanning(timeout: number = 30000): Promise<void> {
     try {
+      // Check if Bluetooth manager is properly initialized
+      if (!this.bleManager || typeof this.bleManager.startDeviceScan !== 'function') {
+        throw new Error('Bluetooth manager not properly initialized. Please use a development build for Bluetooth functionality.');
+      }
+
       if (this.isScanning) {
         console.log('Bluetooth scanning already in progress');
         return;
@@ -295,6 +330,11 @@ export class BluetoothManager {
   // Device connection
   async connectToDevice(deviceId: string): Promise<ConnectedDevice> {
     try {
+      // Check if Bluetooth manager is properly initialized
+      if (!this.bleManager || typeof this.bleManager.connectToDevice !== 'function') {
+        throw new Error('Bluetooth manager not properly initialized. Please use a development build for Bluetooth functionality.');
+      }
+
       this.setConnectionState('connecting');
 
       // Connect to the device
@@ -369,6 +409,14 @@ export class BluetoothManager {
   async disconnectFromDevice(): Promise<void> {
     try {
       if (!this.connectedDevice) {
+        return;
+      }
+
+      // Check if Bluetooth manager is properly initialized
+      if (!this.bleManager || typeof this.bleManager.cancelDeviceConnection !== 'function') {
+        console.warn('Bluetooth manager not properly initialized - cannot disconnect');
+        this.connectedDevice = null;
+        this.setConnectionState('disconnected');
         return;
       }
 
@@ -557,6 +605,22 @@ export class BluetoothManager {
 
   isConnected(): boolean {
     return this.connectionState === 'connected' && this.connectedDevice !== null;
+  }
+
+  isInitialized(): boolean {
+    return this.bleManager && typeof this.bleManager.onStateChange === 'function';
+  }
+
+  getInitializationStatus(): {
+    initialized: boolean;
+    error?: string;
+    bleManagerType: string;
+  } {
+    return {
+      initialized: this.isInitialized(),
+      error: !this.isInitialized() ? 'Bluetooth manager not properly initialized. Check if react-native-ble-plx is properly linked.' : undefined,
+      bleManagerType: typeof this.bleManager
+    };
   }
 
   async cleanup(): Promise<void> {
